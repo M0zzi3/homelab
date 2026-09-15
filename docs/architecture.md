@@ -1,162 +1,123 @@
 # Architecture
 
-## Scope
+This page describes the homelab at a portfolio level. It explains the main boundaries and dependencies without reproducing the live address plan or private configuration.
 
-This page describes the logical shape of the homelab. It is not a complete inventory and does not expose operational addresses, credentials or remote-access configuration.
+## Architecture layers
 
-The environment is split into four concerns:
+### Network
 
-1. network boundaries and name resolution;
-2. virtualisation and recovery;
-3. application delivery and automation;
-4. local AI compute.
+OpenWrt provides routing, firewalling and DHCP. A managed switch carries the required VLANs. Technitium provides internal DNS, and WireGuard provides authenticated remote access.
 
-## Network boundaries
+The public model shows four network purposes:
 
-```mermaid
-flowchart LR
-    internet[Internet] --> firewall[Router and firewall]
-    vpn[Authenticated VPN clients] --> firewall
+- core infrastructure and trusted clients;
+- IoT devices;
+- guest access;
+- Proxmox cluster communication.
 
-    firewall --> trusted[Trusted and management zone]
-    firewall --> iot[IoT zone]
-    firewall --> guest[Guest zone]
-    firewall --> cluster[Cluster-only zone]
+### Compute and storage
 
-    trusted --> services[Infrastructure and application services]
-    trusted --> dns[Internal DNS]
-    cluster --> pve[Proxmox cluster communication]
+Proxmox hosts the main VMs and LXCs. Workloads are separated by responsibility: infrastructure, container applications, AI compute, home automation, JARVIS, NAS storage and backup.
 
-    iot -. restricted flows .-> automation[Home automation]
-    guest -. internet access only .-> internet
+A local Proxmox Backup Server provides the first restore path. A second PBS in Poland stores an off-site copy over the VPN. The final documentation will name the sync direction only after the running job has been checked.
+
+### Applications and automation
+
+The Docker host runs Traefik, Dockhand, n8n, the MCP stack, Honcho and Immich core services. Immich stores its media on the NAS and sends machine-learning work to the AI server.
+
+Hermes is the visible JARVIS runtime. n8n owns durable automation, MCP exposes authorised integrations, Honcho handles conversational memory, and the AI server provides local inference.
+
+## Diagram 1: homelab overview
+
+**File:** `assets/diagrams/homelab-overview.svg`
+
+**Purpose:** give a recruiter the full system in one image.
+
+Include:
+
+```text
+Internet and WireGuard
+        ↓
+OpenWrt and managed switch
+        ↓
+Proxmox cluster
+        ↓
+Technitium | Gitea | Docker deploy | AI server
+Hermes | Home Assistant | NAS | PBS
+        ↓
+Docker applications, local AI and off-site backup
 ```
 
-### Design intent
+Keep it to roughly twelve main boxes. Do not include individual containers, addresses or every connection.
 
-- Trusted clients can reach administration interfaces when required.
-- IoT devices are isolated from general client and management traffic.
-- Guest devices do not receive access to internal services.
-- Proxmox cluster communication uses a dedicated segment.
-- Remote administration enters through authenticated VPN access rather than direct service exposure.
-- Internal DNS provides stable service names independently of individual application ports.
+## Diagram 2: network and trust boundaries
 
-The operational firewall rules and address plan remain private. Public examples will use fictional networks and hostnames.
+**File:** `assets/diagrams/network-topology.svg`
 
-## Compute and service topology
+Include:
 
-```mermaid
-flowchart TB
-    pve[Proxmox VE cluster]
-    pbs[Proxmox Backup Server]
+- OpenWrt;
+- managed switch;
+- core, IoT, guest and cluster VLANs;
+- Technitium DNS;
+- WireGuard remote access;
+- permitted and restricted flows.
 
-    pve --> infra[Infrastructure LXCs and VMs]
-    pve --> app[Application deployment VM]
-    pve --> ai[AI compute VM]
-    pve --> ha[Home automation]
-    pve --> jarvis[Hermes/JARVIS]
-    pve --> nas[NAS storage]
-    pve --> pbs
+Use one colour per trust zone. Show the purpose of a boundary rather than the complete firewall rule set.
 
-    infra --> dns[Technitium DNS]
-    infra --> git[Gitea]
-    infra --> vpn[VPN services]
+## Diagram 3: JARVIS and application flow
 
-    app --> traefik[Traefik]
-    app --> dockhand[Dockhand]
-    app --> n8n[n8n]
-    app --> honcho[Honcho]
-    app --> mcp[MCP gateway]
+**File:** `assets/diagrams/jarvis-platform.svg`
 
-    ai --> lmstudio[LM Studio]
-    ai --> immichml[Immich ML]
+Include:
 
-    app --> immich[Immich core]
-    immich --> nas
-    immich --> immichml
+```text
+User
+ ↓
+Hermes
+ ├── n8n
+ ├── MCP Gateway
+ │   ├── Docker MCP
+ │   └── custom integrations
+ ├── Honcho
+ │   └── local models on AI server
+ └── cloud reasoning providers
 
-    jarvis --> n8n
-    jarvis --> mcp
-    honcho --> lmstudio
+Docker deploy
+ ├── Traefik
+ ├── Dockhand
+ ├── n8n
+ ├── Honcho
+ ├── MCP stack
+ └── Immich core
+
+ubuvault-alpha ── Immich media
+AI server ─────── local models and Immich ML
 ```
 
-### Placement principles
+This diagram should show responsibility and data flow, not every API call.
 
-- Core infrastructure services are separated from user-facing application stacks.
-- AI workloads run on a host with access to the available GPU.
-- Deployment configuration is tracked separately from runtime secrets.
-- Backups are not stored only with the workloads they protect.
-- Application routing is centralised while service data remains owned by each application.
+## Drawing rules
 
-## Deployment flow
+Create the diagrams in diagrams.net and commit both the source and export:
 
-```mermaid
-sequenceDiagram
-    participant A as Administrator
-    participant G as Gitea
-    participant R as Pull request
-    participant D as Dockhand
-    participant S as Docker service
-    participant V as Verification
-
-    A->>G: Push change to feature branch
-    G->>R: Open reviewable change
-    R->>G: Merge approved configuration
-    G->>D: Trigger or request deployment
-    D->>S: Pull configuration and update service
-    S->>V: Expose health and runtime state
-    V-->>A: Confirm success or initiate rollback
+```text
+assets/diagrams/source/homelab-overview.drawio
+assets/diagrams/homelab-overview.svg
 ```
 
-Not every stack is fully automated. The important property is that a change has an identifiable source revision and an explicit verification step.
+Use the same pattern for all three diagrams.
 
-## Automation and AI flow
+Recommended colours:
 
-```mermaid
-flowchart LR
-    trigger[User request or schedule] --> hermes[Hermes/JARVIS]
-    hermes --> n8n[n8n orchestration]
-    n8n --> mcp[MCP services]
-    n8n --> data[Structured data stores]
-    mcp --> external[Garmin, Google and other APIs]
-    mcp --> home[Home Assistant]
+| Layer | Colour |
+| --- | --- |
+| Networking | Blue |
+| Proxmox and compute | Orange |
+| Storage and backup | Purple |
+| Docker applications | Green |
+| Security boundaries | Red |
+| JARVIS and automation | Cyan |
+| External services | Grey |
 
-    hermes --> router{Model routing}
-    router --> local[Local model serving]
-    router --> cloud[Cloud reasoning provider]
-    local --> memory[Honcho memory tasks]
-```
-
-Routine memory and embedding work can remain local. More demanding reasoning can use a cloud provider. This keeps persistent workloads modest while preserving access to stronger models when needed.
-
-## Resilience and recovery
-
-The recovery model uses several layers:
-
-- Proxmox backups for guests;
-- application-specific persistent data and export procedures;
-- Git history for non-secret deployment configuration;
-- service health checks after updates;
-- rollback to a known-good revision when an update fails;
-- separate documentation for steps that cannot be reconstructed automatically.
-
-This is not presented as zero-downtime infrastructure. The goal is predictable recovery with clear ownership of state.
-
-## Known limitations
-
-- Some services are configured through web interfaces and are not yet fully reproducible from Git.
-- Hardware capacity and redundancy are limited by a residential budget and power envelope.
-- Monitoring coverage differs between infrastructure layers.
-- Several documentation pages still need measured verification evidence.
-
-These limitations form the roadmap for future improvements rather than being hidden behind a "production-grade" label.
-
-## Detailed documentation
-
-- [Infrastructure overview](infrastructure/index.md)
-- [Proxmox cluster](infrastructure/proxmox-cluster.md)
-- [Network architecture](infrastructure/network.md)
-- [Backup and off-site replication](infrastructure/backup-and-replication.md)
-- [System catalogue](systems/index.md)
-- [Docker platform](platforms/docker-platform.md)
-- [JARVIS platform](platforms/jarvis-platform.md)
-- [Immich](services/immich.md)
+Use an explicit background, readable labels and no more detail than the diagram's purpose requires.
