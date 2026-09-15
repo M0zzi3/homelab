@@ -1,0 +1,41 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.ovpn
+*.mobileconfig
+wg*.conf
+
+# Application exports and runtime data
+credentials/
+secrets/
+private/
+backups/
+*.sqlite
+*.db
+
+# Local tooling and editor state
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.obsidian/
+
+# Python and documentation build output
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+site/
+.cache/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
