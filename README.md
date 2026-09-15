@@ -40,6 +40,7 @@ flowchart TB
     guests --> docker[Docker deployment host]
     guests --> ai[AI compute host]
     guests --> automation[Hermes and Home Assistant]
+    guests --> storage[NAS storage]
 
     subgraph platform[Container platform]
         docker --> proxy[Traefik]
@@ -47,6 +48,7 @@ flowchart TB
         docker --> workflows[n8n]
         docker --> memory[Honcho]
         docker --> gateway[MCP gateway]
+        docker --> photos[Immich core]
     end
 
     subgraph local_ai[Local AI workloads]
@@ -57,20 +59,30 @@ flowchart TB
     workflows --> gateway
     automation --> workflows
     memory --> models
+    photos --> media_ml
+    photos --> storage
+    backup --> offsite[Second PBS over VPN]
 ```
 
 The diagram shows roles and trust boundaries rather than operational addresses or hostnames. See [Architecture](docs/architecture.md) for the expanded view.
+
+## Explore the system
+
+- **Infrastructure:** [Proxmox cluster](docs/infrastructure/proxmox-cluster.md), [network architecture](docs/infrastructure/network.md), and [backup replication](docs/infrastructure/backup-and-replication.md)
+- **VMs and LXCs:** [system catalogue](docs/systems/index.md) with a page for each major host or guest
+- **Platforms:** [Docker delivery](docs/platforms/docker-platform.md) and the distributed [JARVIS platform](docs/platforms/jarvis-platform.md)
+- **Applications:** [Immich](docs/services/immich.md), including its Docker, NAS and GPU dependencies
 
 ## Technical highlights
 
 | Area | What I implemented | Evidence |
 | --- | --- | --- |
-| Virtualisation | Multi-node Proxmox environment with VMs, LXCs and a separate cluster network | [Proxmox platform case study](docs/case-studies/proxmox-platform.md) |
-| Networking | Segmented core, IoT, guest and cluster traffic with internal DNS and VPN access | [Architecture](docs/architecture.md#network-boundaries) |
-| Delivery | Gitea-based configuration workflow, reviewed changes, Dockhand deployment and post-deployment checks | [Git-managed deployment case study](docs/case-studies/gitops-deployment.md) |
-| Recovery | Proxmox backups, explicit rollback thinking and health verification after changes | [Operations and recovery](docs/architecture.md#resilience-and-recovery) |
-| Automation | n8n and Hermes workflows integrating APIs, structured data and home infrastructure | [Automation flow](docs/architecture.md#automation-and-ai-flow) |
-| AI operations | Local model serving, memory services and GPU capacity planning alongside media ML workloads | [Self-hosted AI case study](docs/case-studies/self-hosted-ai.md) |
+| Virtualisation | Multi-node Proxmox environment with VMs, LXCs and a separate cluster network | [Proxmox cluster](docs/infrastructure/proxmox-cluster.md) |
+| Networking | OpenWrt, managed switching, VLAN boundaries, internal DNS and WireGuard | [Network architecture](docs/infrastructure/network.md) |
+| Delivery | Gitea-based configuration workflow, reviewed changes, Dockhand deployment and Traefik routing | [Docker platform](docs/platforms/docker-platform.md) |
+| Recovery | Local PBS backups and a second PBS in Poland connected over VPN | [Backup and replication](docs/infrastructure/backup-and-replication.md) |
+| Automation | Hermes, n8n, Honcho and MCP services working across several hosts | [JARVIS platform](docs/platforms/jarvis-platform.md) |
+| AI operations | Local model serving, memory services and GPU capacity planning alongside Immich ML | [AI server](docs/systems/ai-server.md) |
 
 ## Case studies
 
@@ -118,10 +130,24 @@ docs/
 ├── architecture.md
 ├── engineering-decisions.md
 ├── security-and-privacy.md
-└── case-studies/
-    ├── proxmox-platform.md
-    ├── gitops-deployment.md
-    └── self-hosted-ai.md
+├── infrastructure/
+│   ├── proxmox-cluster.md
+│   ├── network.md
+│   └── backup-and-replication.md
+├── systems/
+│   ├── index.md
+│   └── one page per major VM, LXC or host
+├── platforms/
+│   ├── docker-platform.md
+│   └── jarvis-platform.md
+├── services/
+│   └── immich.md
+├── case-studies/
+│   ├── proxmox-platform.md
+│   ├── gitops-deployment.md
+│   └── self-hosted-ai.md
+└── templates/
+    └── service-page.md
 
 examples/
 └── README.md
@@ -143,7 +169,7 @@ The full policy and publication checklist are in [Security and privacy](docs/sec
 
 ## Current status
 
-This is the first documentation draft. The next useful additions are a visual architecture diagram, sanitised configuration examples and verification evidence for each case study.
+The information architecture and first system pages are in place. The next additions are verified resource allocations, sanitised configuration examples, screenshots and measured recovery evidence.
 
 ## Author
 

@@ -54,6 +54,7 @@ flowchart TB
     pve --> ai[AI compute VM]
     pve --> ha[Home automation]
     pve --> jarvis[Hermes/JARVIS]
+    pve --> nas[NAS storage]
     pve --> pbs
 
     infra --> dns[Technitium DNS]
@@ -68,6 +69,10 @@ flowchart TB
 
     ai --> lmstudio[LM Studio]
     ai --> immichml[Immich ML]
+
+    app --> immich[Immich core]
+    immich --> nas
+    immich --> immichml
 
     jarvis --> n8n
     jarvis --> mcp
@@ -144,3 +149,14 @@ This is not presented as zero-downtime infrastructure. The goal is predictable r
 - Several documentation pages still need measured verification evidence.
 
 These limitations form the roadmap for future improvements rather than being hidden behind a "production-grade" label.
+
+## Detailed documentation
+
+- [Infrastructure overview](infrastructure/index.md)
+- [Proxmox cluster](infrastructure/proxmox-cluster.md)
+- [Network architecture](infrastructure/network.md)
+- [Backup and off-site replication](infrastructure/backup-and-replication.md)
+- [System catalogue](systems/index.md)
+- [Docker platform](platforms/docker-platform.md)
+- [JARVIS platform](platforms/jarvis-platform.md)
+- [Immich](services/immich.md)
