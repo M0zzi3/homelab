@@ -14,77 +14,80 @@ config:
   flowchart:
     curve: linear
 ---
-flowchart LR
-    %% Edge & Network
-    subgraph External ["External & Remote Access"]
-        Internet(("Internet"))
-        WireGuard["WireGuard VPN"]
-        PolandPBS[("Off-site PBS (Poland)")]
-    end
-
-    subgraph Network ["Network Edge"]
+flowchart TD
+    %% Top Tier: Network Edge & Gateway
+    subgraph Edge ["Network Edge & Ingress"]
+        Internet(("Public Internet"))
+        WireGuard["WireGuard VPN (Remote Admin)"]
         OpenWrt["OpenWrt Firewall / Router"]
-        Switch["TP-Link Managed Switch"]
+        Switch["TP-Link Managed Switch (VLANs)"]
+
+        Internet --> OpenWrt
+        WireGuard --> OpenWrt
+        OpenWrt <--> Switch
     end
 
-    %% Proxmox Cluster Subgraph
-    subgraph Proxmox ["Proxmox VE Cluster"]
-        subgraph Node1 ["Proxmox Node 1"]
-            LocalPBS[("Proxmox Backup Server")]
-            NAS[("ubuvault-alpha NAS")]
-            HomeAssistant["Home Assistant"]
-        end
-
-        subgraph Node2 ["Proxmox Node 2 (endurance)"]
-            AIServer["AI Server (GPU)"]
-        end
-
-        subgraph ClusterServices ["Cluster Services"]
-            Technitium["Technitium DNS"]
-            Gitea["Gitea Local Git"]
-            Tailscale["Tailscale Exit Node"]
-            Hermes["Hermes AI Agent"]
-
-            subgraph DockerHost ["Docker Server"]
-                Traefik["Traefik Proxy Server"]
-                Dockhand["Dockhand Docker Management"]
-                n8n["n8n Automation Platform"]
-                Immich["Immich Photo Library"]
-                MCPHoncho["MCP Stack & Honcho AI Memory"]
-            end
-        end
+    %% Tier 2: 4 Clean Side-by-Side Architectural Columns
+    subgraph Node1 ["Proxmox Node 1"]
+        LocalPBS[("Proxmox Backup Server")]
+        NAS[("ubuvault-alpha NAS")]
+        HomeAssistant["Home Assistant"]
     end
 
-    %% Ingress & Edge Connections
-    Internet --> OpenWrt
-    WireGuard --> OpenWrt
-    OpenWrt --> Switch
+    subgraph Node2 ["Proxmox Node 2 (endurance)"]
+        AIServer["AI Server (GPU Accelerated)"]
+    end
 
-    %% Switch feeds compute nodes
-    Switch --> Node1
-    Switch --> Node2
+    subgraph CoreInfra ["Cluster Infrastructure"]
+        Technitium["Technitium DNS"]
+        Gitea["Gitea Local Git"]
+        Hermes["Hermes AI Agent (JARVIS)"]
+        Tailscale["Tailscale Exit Node"]
+    end
 
-    %% Cluster nodes host shared services
-    Node1 --> ClusterServices
-    Node2 --> ClusterServices
+    subgraph DockerVM ["Docker Application Host"]
+        Traefik["Traefik Reverse Proxy"]
+        Dockhand["Dockhand Docker Manager"]
+        n8n["n8n Automation Engine"]
+        Immich["Immich Media Server"]
+        MCPHoncho["MCP Stack & Honcho Memory"]
+    end
 
-    %% Disaster Recovery
+    %% Disaster Recovery Tier
+    subgraph Offsite ["Off-Site Disaster Recovery"]
+        PolandPBS[("Proxmox Backup Server (Poland)")]
+    end
+
+    %% Network downlinks from switch
+    Switch <--> Node1
+    Switch <--> Node2
+    Switch <--> CoreInfra
+    Switch <--> DockerVM
+
+    %% Off-site backup link
     LocalPBS ===|"Encrypted VPN Tunnel"| PolandPBS
 
     %% Styling & Color Coding (Dark Theme)
-    classDef net fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0;
-    classDef compute fill:#2e1a05,stroke:#fb923c,stroke-width:2px,color:#e2e8f0;
-    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
-    classDef docker fill:#052e1f,stroke:#34d399,stroke-width:2px,color:#e2e8f0;
-    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
-    classDef ext fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#e2e8f0;
+    style Edge fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#e2e8f0;
+    style Node1 fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    style Node2 fill:#2e1a05,stroke:#fb923c,stroke-width:2px,color:#e2e8f0;
+    style CoreInfra fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0;
+    style DockerVM fill:#042116,stroke:#10b981,stroke-width:2px,color:#e2e8f0;
+    style Offsite fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
 
-    class Internet ext;
-    class OpenWrt,Switch,WireGuard,Technitium,Tailscale net;
-    class Node1,Node2,ClusterServices compute;
-    class LocalPBS,NAS,PolandPBS storage;
-    class DockerHost,Traefik,Dockhand,Immich,Gitea docker;
-    class AIServer,Hermes,HomeAssistant,n8n,MCPHoncho ai;
+    classDef edgeNode fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
+    classDef storageNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
+    classDef computeNode fill:#451a03,stroke:#fb923c,stroke-width:1.5px,color:#f8fafc;
+    classDef netNode fill:#0c4a6e,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
+    classDef dockerNode fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#f8fafc;
+    classDef offsiteNode fill:#311b92,stroke:#818cf8,stroke-width:1.5px,color:#f8fafc;
+
+    class Internet,WireGuard,OpenWrt,Switch edgeNode;
+    class LocalPBS,NAS,HomeAssistant storageNode;
+    class AIServer computeNode;
+    class Technitium,Gitea,Hermes,Tailscale netNode;
+    class Traefik,Dockhand,n8n,Immich,MCPHoncho dockerNode;
+    class PolandPBS offsiteNode;
 ```
 
 The environment is built around:
