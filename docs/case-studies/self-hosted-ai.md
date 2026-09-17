@@ -8,6 +8,8 @@ The AI server has limited GPU memory, system memory and storage. It must support
 
 LM Studio provides local model serving. Honcho uses a small Qwen model for memory derivation, summaries and routine reasoning, together with Nomic embeddings. More demanding tasks are routed through JARVIS to stronger external providers.
 
+See the [AI and automation stack diagram](../architecture.md#31-ai-and-automation-stack-jarvis-platform) for the runtime data flow and integration points.
+
 Immich machine learning shares the AI host, so model file size alone is not a capacity plan. Context length, KV cache, concurrency, GPU memory, system RAM and stored model variants all matter.
 
 ## Operating approach

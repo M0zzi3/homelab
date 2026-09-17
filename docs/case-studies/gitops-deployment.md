@@ -8,6 +8,8 @@ Configuration held only in application interfaces or manually maintained Compose
 
 Gitea stores focused deployment repositories. Meaningful changes use feature branches and pull requests. Dockhand applies the approved stack to the Docker host, while Traefik provides routes for selected web applications. Runtime secrets remain outside Git.
 
+See the [GitOps and container delivery pipeline diagram](../architecture.md#32-gitops-and-container-delivery-pipeline).
+
 ```text
 change
 → feature branch

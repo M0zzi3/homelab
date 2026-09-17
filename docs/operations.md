@@ -32,9 +32,11 @@ Traefik is the common HTTP/HTTPS edge for selected Docker applications. Routing 
 
 A deployment is not considered successful merely because a container is running. Verification can include container health, startup logs, application endpoints, reverse-proxy routing and dependent service behaviour.
 
+See the [GitOps and container delivery pipeline](architecture.md#32-gitops-and-container-delivery-pipeline).
+
 ## Backup and recovery
 
-The recovery model has several layers:
+The recovery model has several layers (see the [backup and disaster recovery pipeline](architecture.md#34-backup-and-disaster-recovery-pipeline)):
 
 - local Proxmox backups for protected VMs and LXCs;
 - a second PBS in Poland connected through VPN;
@@ -68,7 +70,7 @@ Useful network verification includes:
 
 ## JARVIS operations
 
-JARVIS is distributed across several components:
+JARVIS is distributed across several components (see the [AI and automation stack diagram](architecture.md#31-ai-and-automation-stack-jarvis-platform)):
 
 | Component | Responsibility |
 | --- | --- |

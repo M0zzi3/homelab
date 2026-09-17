@@ -198,59 +198,168 @@ Include:
 
 Use one colour per trust zone. Show the purpose of a boundary rather than the complete firewall rule set.
 
-## Diagram 3: JARVIS and application flow
+## Diagram 3: Subsystem interconnections and application flows
 
-**File:** `assets/diagrams/jarvis-platform.svg`
+These diagrams detail the functional lifecycles and cross-system data flows that operate across the infrastructure.
 
-Include:
+### 3.1 AI and automation stack (JARVIS platform)
 
-```text
-User
- ↓
-Hermes
- ├── n8n
- ├── MCP Gateway
- │   ├── Docker MCP
- │   └── custom integrations
- ├── Honcho
- │   └── local models on AI server
- └── cloud reasoning providers
+Shows conversational prompt handling, agent orchestration via Hermes, durable automation in n8n, tool integration through the MCP stack, conversational memory in Honcho, local GPU inference, and cloud fallback.
 
-Docker deploy
- ├── Traefik
- ├── Dockhand
- ├── n8n
- ├── Honcho
- ├── MCP stack
- └── Immich core
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    %% Actors
+    User(("User / Voice / Chat")) --> Hermes["Hermes Agent Runtime\n(JARVIS Gateway)"]
 
-ubuvault-alpha ── Immich media
-AI server ─────── local models and Immich ML
+    %% Core Orchestration
+    Hermes <-->|"Schedules & Triggers"| n8n["n8n Automation Engine"]
+    Hermes <-->|"Tool Execution"| MCP["MCP Gateway"]
+
+    subgraph MCPTools ["MCP Stack"]
+        DockerMCP["Docker MCP (Container Ops)"]
+        GarminMCP["Garmin MCP (Health / Fitness Data)"]
+    end
+    MCP --> DockerMCP & GarminMCP
+
+    %% Context & Reasoning
+    Hermes <-->|"Session Memory"| Honcho["Honcho Memory System"]
+    Honcho -->|"Local Embeddings & Summaries"| AIServer["AI Server (GPU / LM Studio)"]
+    Hermes -.->|"Complex Reasoning Fallback"| CloudLLM["Cloud LLMs"]
+
+    %% Computer Vision / App ML
+    ImmichApp["Immich Core"] -->|"ML Tasks (CLIP & Face Recognition)"| AIServer
+
+    %% Styling
+    style MCPTools fill:#120e2e,stroke:#818cf8,stroke-width:1.5px,color:#e2e8f0;
+    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef client fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    class Hermes,n8n,MCP,DockerMCP,GarminMCP,Honcho,AIServer,CloudLLM,ImmichApp ai;
+    class User client;
 ```
 
-This diagram should show responsibility and data flow, not every API call.
+### 3.2 GitOps and container delivery pipeline
 
-## Drawing rules
+Traces the path from code changes and PR reviews in Gitea through automated Dockhand deployment to the Docker host, reverse-proxy ingress via Traefik, and persistent storage mounts.
 
-Create the diagrams in diagrams.net and commit both the source and export:
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    %% Ingress & GitOps
+    Dev(("Developer")) -->|"Feature Branch & PR"| Gitea["Gitea Source Control"]
+    Gitea -->|"Approved Compose Stacks"| Dockhand["Dockhand Deployment Engine"]
+    Dockhand -->|"Stack Deploy & Health Check"| DockerHost["Docker Host Containers"]
 
-```text
-assets/diagrams/source/homelab-overview.drawio
-assets/diagrams/homelab-overview.svg
+    %% Ingress Route
+    User(("Web / Mobile Clients")) --> Traefik["Traefik Reverse Proxy"]
+    Traefik -->|"Routes Ingress"| DockerHost
+
+    %% Storage Persistence
+    DockerHost <-->|"Persistent Volumes"| NAS["ubuvault-alpha NAS"]
+
+    %% Styling
+    classDef gitops fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef actor fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
+    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    class Gitea,Dockhand,Traefik,DockerHost gitops;
+    class Dev,User actor;
+    class NAS storage;
 ```
 
-Use the same pattern for all three diagrams.
+### 3.3 Central storage architecture (ubuvault-alpha NAS)
 
-Recommended colours:
+Details how the NAS functions as the shared high-capacity storage backbone across virtual machines, containers, and hypervisors.
 
-| Layer | Colour |
-| --- | --- |
-| Networking | Blue |
-| Proxmox and compute | Orange |
-| Storage and backup | Purple |
-| Docker applications | Green |
-| Security boundaries | Red |
-| JARVIS and automation | Cyan |
-| External services | Grey |
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    subgraph NASPools ["ubuvault-alpha NAS (Storage Backbone)"]
+        Photos["Immich Media (/photos & /videos)"]
+        GitData["Gitea Repositories Storage"]
+        ISOPool["Proxmox ISOs & VM Templates"]
+        PrivateShares["Private User Shares (SMB / NFS)"]
+    end
 
-Use an explicit background, readable labels and no more detail than the diagram's purpose requires.
+    %% Consumers
+    Immich["Immich Container"] <-->|"Direct Media Mount"| Photos
+    Gitea["Gitea LXC"] <-->|"Git Volume Mount"| GitData
+    PVE["Proxmox VE Cluster"] <-->|"NFS Shared Storage"| ISOPool
+    Clients["Workstations & LAN Clients"] <-->|"SMB / NFS Access"| PrivateShares
+
+    %% Styling
+    style NASPools fill:#240c30,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    classDef storageNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
+    classDef clientNode fill:#0f2942,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
+    class Photos,GitData,ISOPool,PrivateShares storageNode;
+    class Immich,Gitea,PVE,Clients clientNode;
+```
+
+### 3.4 Backup and disaster recovery pipeline
+
+Illustrates the tiered recovery strategy: scheduled deduplicated guest backups to the local Proxmox Backup Server, followed by encrypted remote replication over VPN to Poland PBS.
+
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    subgraph ComputeGuests ["Proxmox Virtual Machines & LXCs"]
+        DockerVM["Docker Deploy Host"]
+        InfraVMs["Core Infrastructure Guests"]
+        AIVM["AI Server"]
+        HAServer["Home Assistant"]
+    end
+
+    subgraph LocalBackup ["Local Recovery Tier"]
+        LocalPBS[("Proxmox Backup Server (Local)")]
+        LocalRestore["Fast Local Restore & Deduplication"]
+    end
+
+    subgraph OffsiteBackup ["Off-Site Disaster Recovery"]
+        PolandPBS[("Proxmox Backup Server (Poland)")]
+        RemoteRetention["Geographic Separation (Off-Site)"]
+    end
+
+    %% Flows
+    ComputeGuests -->|"Scheduled Deduplicated Snapshots"| LocalPBS
+    LocalPBS --- LocalRestore
+    LocalPBS ===|"Encrypted VPN Tunnel (Remote Sync)"| PolandPBS
+    PolandPBS --- RemoteRetention
+
+    %% Styling
+    style ComputeGuests fill:#052e1f,stroke:#34d399,stroke-width:1.5px,color:#e2e8f0;
+    style LocalBackup fill:#2b0b1b,stroke:#f43f5e,stroke-width:2px,color:#e2e8f0;
+    style OffsiteBackup fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
+    classDef nodeStyle fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
+    class DockerVM,InfraVMs,AIVM,HAServer,LocalPBS,LocalRestore,PolandPBS,RemoteRetention nodeStyle;
+```
+
+## Diagram standards
+
+Diagrams are maintained as native, version-controlled Mermaid diagrams directly within the repository markdown pages:
+
+- **Theme:** Dark theme with high-contrast functional color-coding.
+- **Layout Engine:** ELK (`layout: elk`) with linear orthogonal edge routing (`curve: linear`).
+- **Boundaries:** Clear conceptual trust and execution zones with explicit direction of data and authority flow.

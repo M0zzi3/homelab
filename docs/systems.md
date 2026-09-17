@@ -71,6 +71,8 @@ The public portfolio does not include credentials, personal memory, session data
 
 `ubuvault-alpha` is the NAS and stores persistent file data used by services such as Immich. Application files and databases are treated as separate recovery concerns: protecting the photo library alone does not recreate the complete Immich application state.
 
+See the [central storage architecture diagram](architecture.md#33-central-storage-architecture-ubuvault-alpha-nas) for consumer mount allocations.
+
 **Evidence to add:** verified storage layout, redundancy model, capacity monitoring and a representative restore.
 
 ## Home Assistant
