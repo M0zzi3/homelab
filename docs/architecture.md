@@ -29,26 +29,16 @@ Hermes is the visible JARVIS runtime. n8n owns durable automation, MCP exposes a
 
 ## Diagram 1: homelab overview
 
-**File:** `assets/diagrams/homelab-overview.svg`
-
-**Purpose:** give a recruiter the full system in one image.
-
-Include:
-
-```text
-Internet and WireGuard
-        ↓
-OpenWrt and managed switch
-        ↓
-Proxmox cluster
-        ↓
-Technitium | Gitea | Docker deploy | AI server
-Hermes | Home Assistant | NAS | PBS
-        ↓
-Docker applications, local AI and off-site backup
+```mermaid
+flowchart LR
+    n1(("Internet")) --> n2["OpenWRT Firewall/Router"]
+    n3["tp-link Switch"] --> n4["Proxmox Cluster"] & n5["Proxmox Node 2 endurance"]
+    n2 --> n3 & n16["WireGuard VPN"]
+    n4 --> n6["Proxmox Backup Server"] & n7["Home Assistant"] & n8["NAS Server"] & n10["High Availability Services"]
+    n5 --> n9["AI Server"] & n10
+    n10 --> n11["Docker Server"] & n12["Technitium DNS"] & n13["Tailscale VPN Exit Node"] & n14["Herme AI Agent"] & n15["Gitea Local Git Server"]
+    n11 --> n17["Immich Photo Library"] & n18["Traefik Proxy Sever"] & n19["Dockhand Docker Managment"] & n20["n8n Aumtomation Platform"] & n21["MCP Stack"] & n25["Honcho AI Memroy System"]n11 --> n17["Immich Photo Library"] & n18["Traefik Proxy Sever"] & n19["Dockhand Docker Managment"] & n20["n8n Aumtomation Platform"] & n21["MCP Stack"] & n25["Honcho AI Memroy System"]
 ```
-
-Keep it to roughly twelve main boxes. Do not include individual containers, addresses or every connection.
 
 ## Diagram 2: network and trust boundaries
 
