@@ -137,59 +137,56 @@ config:
     curve: linear
 ---
 flowchart TD
-    %% Top: Edge & Gateway Layer
-    subgraph Ingress ["Edge & Gateway"]
-        Internet(("Public Internet"))
-        WireGuard["WireGuard VPN (Remote Admin)"]
-        OpenWrt["OpenWrt Firewall / Router"]
-        Switch["TP-Link Managed Switch"]
+    %% Top Tier: Network Edge & Gateway
+    Internet(("Public Internet")) -->|"WAN / Drop Inbound"| OpenWrt["OpenWrt Firewall / Router\n(DHCP, NAT & Inter-VLAN Routing)"]
+    WireGuard["WireGuard VPN\n(Remote Admin)"] -->|"Authenticated VPN"| OpenWrt
+    OpenWrt <-->|"802.1Q Trunk"| Switch["TP-Link Managed Switch\n(802.1Q VLAN Trunking)"]
 
-        Internet -->|"WAN / Drop Inbound"| OpenWrt
-        WireGuard -->|"Authenticated VPN"| OpenWrt
-        OpenWrt <-->|"802.1Q VLAN Trunk"| Switch
-    end
-
-    %% 4 VLAN Boxes Side-by-Side Underneath
-    subgraph ClusterVLAN ["Cluster VLAN"]
-        Corosync["Proxmox Corosync & Migration (No IP Gateway)"]
+    %% Middle Tier: 4 Side-by-Side VLAN Columns
+    subgraph ClusterVLAN ["Cluster VLAN 60 (Interconnect)"]
+        direction TB
+        Corosync["Proxmox Corosync & Live Migration\n(Isolated L2 / No IP Gateway)"]
+        ClusterNICs["Dedicated Physical NICs\n(Direct Host-to-Host Transport)"]
+        Corosync --- ClusterNICs
     end
 
     subgraph CoreVLAN ["Core VLAN (Trusted & MGMT)"]
-        TrustedClients["Trusted Clients (Workstations / Mobile)"]
+        direction TB
         ProxmoxMgmt["Proxmox Management (Web UI / SSH)"]
+        TrustedClients["Trusted Clients (Workstations / Mobile)"]
         HA["Home Assistant (Smart Home Hub)"]
-        CoreServices["Core Infrastructure (Technitium DNS, Docker, NAS)"]
+        CoreServices["Core Infrastructure (Technitium, Docker, NAS)"]
+        ProxmoxMgmt --- TrustedClients
+        HA --- CoreServices
+        TrustedClients --- HA
     end
 
     subgraph IoTVLAN ["IoT VLAN (Smart Home)"]
-        IoTDevices["Smart Devices, Sensors & Plugs"]
+        direction TB
+        IoTDevices["Smart Devices, Sensors & Plugs\n(Untrusted Firmware)"]
+        IoTPolicy["Boundary Policy:\n• Inbound telemetry to HA only\n• Direct access to Core dropped\n• Filtered WAN egress"]
+        IoTDevices --- IoTPolicy
     end
 
     subgraph GuestVLAN ["Guest VLAN (Visitors)"]
-        GuestClients["Guest Devices (Isolated)"]
+        direction TB
+        GuestClients["Guest Devices (Isolated Visitors)"]
+        GuestPolicy["Boundary Policy:\n• Client-to-client isolation\n• Zero internal LAN access\n• Outbound Internet only"]
+        GuestClients --- GuestPolicy
     end
 
-    %% Switch Downlink Connections
-    Switch <-->|"Dedicated L2 Ports"| ClusterVLAN
-    Switch <-->|"VLAN Trunk (Full Access)"| CoreVLAN
-    Switch <-->|"VLAN Trunk (Internet + Filtered)"| IoTVLAN
-    Switch <-->|"VLAN Trunk (Internet Only)"| GuestVLAN
+    %% Switch Downlinks to 4 VLANs
+    Switch -->|"Dedicated L2 Ports"| ClusterVLAN
+    Switch -->|"VLAN Trunk (Full Access)"| CoreVLAN
+    Switch -->|"VLAN Trunk (Filtered)"| IoTVLAN
+    Switch -->|"VLAN Trunk (Internet Only)"| GuestVLAN
 
-    %% Inter-VLAN & Node Policies
-    ProxmoxMgmt ===|"Dedicated NICs (Corosync L2)"| Corosync
-    TrustedClients -->|"Admin & Control"| IoTDevices
-    IoTDevices -->|"Telemetry (HA only)"| HA
-    IoTDevices -.->|"Blocked: Dropped by Firewall"| CoreServices
-    GuestClients -.->|"Blocked: Zero Internal Access"| CoreVLAN
-
-    %% Styles for 4 VLAN Boxes
-    style Ingress fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#e2e8f0;
+    %% Styling
     style ClusterVLAN fill:#061e33,stroke:#0ea5e9,stroke-width:2px,color:#e2e8f0;
     style CoreVLAN fill:#042116,stroke:#10b981,stroke-width:2px,color:#e2e8f0;
     style IoTVLAN fill:#271403,stroke:#f97316,stroke-width:2px,color:#e2e8f0;
     style GuestVLAN fill:#1d0b2e,stroke:#a855f7,stroke-width:2px,color:#e2e8f0;
 
-    %% Node styling
     classDef edgeNode fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
     classDef clusterNode fill:#0c4a6e,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
     classDef coreNode fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#f8fafc;
@@ -197,10 +194,10 @@ flowchart TD
     classDef guestNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
 
     class Internet,WireGuard,OpenWrt,Switch edgeNode;
-    class Corosync clusterNode;
-    class TrustedClients,ProxmoxMgmt,HA,CoreServices coreNode;
-    class IoTDevices iotNode;
-    class GuestClients guestNode;
+    class Corosync,ClusterNICs clusterNode;
+    class ProxmoxMgmt,TrustedClients,HA,CoreServices coreNode;
+    class IoTDevices,IoTPolicy iotNode;
+    class GuestClients,GuestPolicy guestNode;
 ```
 
 Include:
