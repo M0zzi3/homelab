@@ -112,7 +112,80 @@ flowchart LR
 
 ## Diagram 2: network and trust boundaries
 
-**File:** `assets/diagrams/network-topology.svg`
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart TD
+    %% Top: Edge & Gateway Layer
+    subgraph Ingress ["Edge & Gateway"]
+        Internet(("Public Internet"))
+        WireGuard["WireGuard VPN (Remote Admin)"]
+        OpenWrt["OpenWrt Firewall / Router"]
+        Switch["TP-Link Managed Switch"]
+
+        Internet -->|"WAN / Drop Inbound"| OpenWrt
+        WireGuard -->|"Authenticated VPN"| OpenWrt
+        OpenWrt <-->|"802.1Q VLAN Trunk"| Switch
+    end
+
+    %% 4 VLAN Boxes Side-by-Side Underneath
+    subgraph ClusterVLAN ["Cluster VLAN"]
+        Corosync["Proxmox Corosync & Migration (No IP Gateway)"]
+    end
+
+    subgraph CoreVLAN ["Core VLAN (Trusted & MGMT)"]
+        TrustedClients["Trusted Clients (Workstations / Mobile)"]
+        ProxmoxMgmt["Proxmox Management (Web UI / SSH)"]
+        HA["Home Assistant (Smart Home Hub)"]
+        CoreServices["Core Infrastructure (Technitium DNS, Docker, NAS)"]
+    end
+
+    subgraph IoTVLAN ["IoT VLAN (Smart Home)"]
+        IoTDevices["Smart Devices, Sensors & Plugs"]
+    end
+
+    subgraph GuestVLAN ["Guest VLAN (Visitors)"]
+        GuestClients["Guest Devices (Isolated)"]
+    end
+
+    %% Switch Downlink Connections
+    Switch <-->|"Dedicated L2 Ports"| ClusterVLAN
+    Switch <-->|"VLAN Trunk (Full Access)"| CoreVLAN
+    Switch <-->|"VLAN Trunk (Internet + Filtered)"| IoTVLAN
+    Switch <-->|"VLAN Trunk (Internet Only)"| GuestVLAN
+
+    %% Inter-VLAN & Node Policies
+    ProxmoxMgmt ===|"Dedicated NICs (Corosync L2)"| Corosync
+    TrustedClients -->|"Admin & Control"| IoTDevices
+    IoTDevices -->|"Telemetry (HA only)"| HA
+    IoTDevices -.->|"Blocked: Dropped by Firewall"| CoreServices
+    GuestClients -.->|"Blocked: Zero Internal Access"| CoreVLAN
+
+    %% Styles for 4 VLAN Boxes
+    style Ingress fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#e2e8f0;
+    style ClusterVLAN fill:#061e33,stroke:#0ea5e9,stroke-width:2px,color:#e2e8f0;
+    style CoreVLAN fill:#042116,stroke:#10b981,stroke-width:2px,color:#e2e8f0;
+    style IoTVLAN fill:#271403,stroke:#f97316,stroke-width:2px,color:#e2e8f0;
+    style GuestVLAN fill:#1d0b2e,stroke:#a855f7,stroke-width:2px,color:#e2e8f0;
+
+    %% Node styling
+    classDef edgeNode fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
+    classDef clusterNode fill:#0c4a6e,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
+    classDef coreNode fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#f8fafc;
+    classDef iotNode fill:#451a03,stroke:#fb923c,stroke-width:1.5px,color:#f8fafc;
+    classDef guestNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
+
+    class Internet,WireGuard,OpenWrt,Switch edgeNode;
+    class Corosync clusterNode;
+    class TrustedClients,ProxmoxMgmt,HA,CoreServices coreNode;
+    class IoTDevices iotNode;
+    class GuestClients guestNode;
+```
 
 Include:
 
