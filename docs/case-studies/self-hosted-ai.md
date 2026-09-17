@@ -1,91 +1,49 @@
-# Self-hosted AI under resource constraints
-
-## Context
-
-I use local language models for persistent memory and auxiliary tasks while reserving stronger cloud models for work that requires more reasoning capacity. The same GPU host also supports media machine-learning workloads, so model selection cannot be separated from infrastructure capacity.
+# Self-hosted AI
 
 ## Problem
 
-The AI environment needed to support:
+The AI server has limited GPU memory, system memory and storage. It must support persistent memory workloads, local embeddings and Immich machine learning without allowing one model to consume all available capacity.
 
-- a small always-available language model;
-- local embeddings;
-- persistent memory processing;
-- occasional media machine-learning jobs;
-- room for future experiments;
-- predictable failure behaviour when a local model is unavailable or unsuitable.
+## Design
 
-Loading the largest model that fits once is not a capacity plan. Runtime overhead, context, concurrency and competing workloads matter.
+LM Studio provides local model serving. Honcho uses a small Qwen model for memory derivation, summaries and routine reasoning, together with Nomic embeddings. More demanding tasks are routed through JARVIS to stronger external providers.
 
-## Decision
+See the [AI and automation stack diagram](../architecture.md#31-ai-and-automation-stack-jarvis-platform) for the runtime data flow and integration points.
 
-LM Studio provides local model serving on the AI host. Honcho uses a small Qwen model for memory derivation, summaries and routine dialectic work, together with a Nomic embedding model. More demanding reasoning remains on the main JARVIS provider path.
+Immich machine learning shares the AI host, so model file size alone is not a capacity plan. Context length, KV cache, concurrency, GPU memory, system RAM and stored model variants all matter.
 
-```mermaid
-flowchart LR
-    request[Task] --> route{Workload type}
-    route -->|memory and embeddings| local[Local AI server]
-    route -->|complex reasoning| cloud[Cloud model provider]
-
-    local --> lm[LM Studio]
-    lm --> qwen[Small Qwen model]
-    lm --> embed[Nomic embeddings]
-
-    qwen --> honcho[Honcho memory]
-    embed --> honcho
-
-    local --> immich[Immich ML]
-    capacity[GPU, RAM and storage limits] --> local
-```
-
-## Capacity considerations
-
-- Model file size is not total runtime memory use.
-- Context length and KV cache consume additional memory.
-- Concurrency can multiply resource use.
-- Persistent models reduce cold-start latency but hold capacity.
-- Media ML workloads need enough headroom to run without destabilising memory services.
-- Disk pressure can become as important as GPU memory when multiple model variants are stored.
-
-## Operational approach
+## Operating approach
 
 1. Keep the persistent local workload small and predictable.
-2. Load models explicitly rather than relying on accidental auto-load behaviour.
-3. Verify model identifiers through the serving API.
-4. Confirm Honcho health and perform a real search/reasoning request after configuration changes.
-5. Monitor resource pressure before increasing model size or context.
-6. Route hard reasoning to a provider designed for it.
+2. Load models explicitly and verify their API identifiers.
+3. Test configuration changes through the consuming application.
+4. Monitor GPU, RAM and disk pressure.
+5. Preserve headroom for Immich and future experiments.
+6. Route tasks elsewhere when they exceed the local model's reliable capability.
 
-## Failure encountered
+## Failure lesson
 
-A model may answer normal chat requests while failing when an application expects tool-use or structured behaviour. Compatibility must therefore be tested through the consuming application, not inferred from a successful chat completion.
+A model can answer normal chat requests while failing when an application expects tool use or structured behaviour. Successful loading therefore does not prove compatibility. The useful test is an end-to-end request through Honcho or the relevant workflow.
 
-## Verification evidence to add
+## Evidence to add
 
-- sanitised model-serving architecture;
-- model and embedding health checks;
-- representative Honcho search and reasoning test;
-- GPU memory observations under normal load;
-- a comparison of model size, latency and reliability;
-- recovery behaviour when local inference is unavailable.
+- sanitised VM and model allocation;
+- GPU observations under normal and competing workloads;
+- a real Honcho search and reasoning check;
+- a small latency and reliability comparison;
+- local-inference failure and fallback behaviour.
 
-## Lessons learned
+## What I learned
 
-- The best local model is the one that remains reliable alongside the rest of the platform.
-- Workload routing is often more useful than forcing one model to handle everything.
-- Successful model loading does not prove application compatibility.
-- Capacity headroom is an operational feature, not wasted hardware.
-- Configuration changes need end-to-end verification through the actual consumer.
+- the best local model is the one that remains reliable beside other workloads;
+- routing is often better than forcing one model to handle everything;
+- capacity headroom is operational value rather than wasted hardware;
+- application-level verification matters more than a successful model load.
 
-## What I would change in a professional environment
+## Professional improvements
 
-- a headless inference server with explicit lifecycle management;
-- central metrics for latency, failures, memory use and queue depth;
-- formal evaluation sets for each workload;
-- privacy classification before routing data externally;
-- request tracing across memory, model and orchestration services;
-- automated fallback and load-shedding policies.
+A professional platform would add central metrics, request tracing, workload-specific evaluations, privacy classification, automated fallback and explicit inference lifecycle management.
 
 ## Skills demonstrated
 
-Local model serving, AI infrastructure, model routing, GPU capacity planning, embeddings, containerised services, API verification, reliability testing and technical trade-off analysis.
+Local model serving, embeddings, AI infrastructure, GPU capacity planning, model routing, API verification and reliability testing.

@@ -1,92 +1,71 @@
 # Git-managed Docker deployments
 
-## Context
-
-Several services originally depended on configuration held in application interfaces or manually maintained Compose files. That made it harder to answer three basic questions: what changed, which version is running, and how do I return to the previous state?
-
 ## Problem
 
-A safer deployment process needed:
+Configuration held only in application interfaces or manually maintained Compose files made it difficult to answer what changed, which revision was running and how to return to a previous state.
 
-- a visible history of non-secret configuration;
-- review before consequential changes;
-- separation between configuration and credentials;
-- a repeatable deployment path;
-- post-deployment verification;
-- a practical rollback target.
+## Design
 
-## Decision
+Gitea stores focused deployment repositories. Meaningful changes use feature branches and pull requests. Dockhand applies the approved stack to the Docker host, while Traefik provides routes for selected web applications. Runtime secrets remain outside Git.
 
-I use a self-hosted Gitea instance for source control and keep deployment-focused repositories for Docker stacks. Changes are prepared on feature branches and reviewed through pull requests. Dockhand reads approved configuration and applies the stack to the target Docker host. Secret values remain outside Git.
+See the [GitOps and container delivery pipeline diagram](../architecture.md#32-gitops-and-container-delivery-pipeline).
 
-```mermaid
-flowchart LR
-    change[Configuration change] --> branch[Feature branch]
-    branch --> pr[Pull request and review]
-    pr --> main[Approved main revision]
-    main --> dockhand[Dockhand]
-    dockhand --> docker[Docker stack]
-    docker --> verify[Health and behaviour checks]
-    verify -->|success| complete[Deployment complete]
-    verify -->|failure| rollback[Return to known-good revision]
+```text
+change
+→ feature branch
+→ pull request
+→ approved configuration
+→ Dockhand
+→ Docker service
+→ health and behaviour checks
+→ completion or rollback
 ```
 
 ## Repository principle
 
-Deployment repositories contain the smallest material needed to express and update a stack:
+A deployment repository contains only what is needed to operate the stack:
 
 ```text
 service/
 ├── compose.yml
 ├── example.env
-├── README.md
-└── operational notes
+└── README.md
 ```
 
-They do not contain copied upstream source code, live secrets or unrelated administration tools.
+It does not copy the upstream project or store live credentials.
 
 ## Verification
 
-A deployment is not considered complete because a container reached `running`. Verification may include:
+A running process is not enough. Depending on the stack, checks include:
 
-- container health status;
-- expected environment identifiers without printing secret values;
-- application health endpoints;
-- connectivity through the intended reverse-proxy route;
-- dependent service behaviour;
-- logs checked for new startup errors.
+- container health and startup logs;
+- application health endpoint;
+- connectivity through Traefik;
+- expected dependent-service behaviour;
+- confirmation that the intended revision was deployed.
 
-## Failure and rollback
+## Rollback limitation
 
-When a change causes an incident, the first objective is to restore service. The clean redesign can wait until the known-good configuration is running again.
-
-A rollback uses the last known-good Git revision together with the preserved runtime data and secrets. This works only when application data compatibility has also been considered; returning a Compose file does not reverse an incompatible database migration.
-
-## Lessons learned
-
-- "Configuration in Git" is not the same as full disaster recovery.
-- A clean deployment repository is easier to review than a copy of the upstream project.
-- Secrets need their own documented recovery process.
-- Health checks must test useful behaviour, not merely process existence.
-- Pull requests make infrastructure reasoning visible even in a one-person lab.
+Returning to an earlier Compose file does not reverse an incompatible database migration. Git configuration, persistent data and application schemas require separate recovery thinking.
 
 ## Evidence to add
 
 - one sanitised Compose example;
-- a pull-request screenshot with sensitive data removed;
-- a deployment verification transcript;
-- one rollback exercise;
-- a simple CI check for YAML, links and accidental secret patterns.
+- a pull-request and deployment screenshot;
+- a health-check transcript;
+- one failed deployment and rollback exercise.
 
-## What I would change in a professional environment
+## What I learned
 
-- dedicated staging and production environments;
-- automated policy and security checks;
-- managed secret storage with rotation;
-- signed artifacts and stronger supply-chain controls;
-- deployment approvals tied to identities and audit logs;
-- defined recovery objectives and database migration procedures.
+- Git history improves configuration review but is not a backup for application data;
+- smaller deployment repositories are easier to reason about;
+- secret recovery must be documented separately;
+- pull requests make infrastructure decisions visible even in a one-person lab.
+
+## Professional improvements
+
+A professional implementation would add staging, automated policy checks, managed secrets, signed artifacts, audited approvals and tested migration procedures.
 
 ## Skills demonstrated
 
-Git, Gitea, pull requests, Docker Compose, Dockhand, configuration management, secret separation, service verification, rollback planning and incident response.
+Git, Gitea, Docker Compose, Dockhand, Traefik, pull requests, secret separation, health verification and rollback planning.

@@ -1,149 +1,154 @@
 # Maksymilian's homelab
 
-A multi-node homelab used to practise infrastructure engineering, network design, reliable deployments, automation and self-hosted AI.
+A multi-node homelab where I practise infrastructure engineering, networking, automation and self-hosted AI beyond isolated classroom exercises.
 
-This repository is a public, sanitised view of the environment. It focuses on the engineering decisions, operational lessons and selected examples that can be shared safely. Exact inventory, credentials and production configuration remain private.
+I use it to design services, deploy them, troubleshoot failures and improve how they are recovered. This repository is a sanitised portfolio view; the live inventory, credentials and deployment configuration remain private.
 
-## Why I built it
-
-Coursework gave me isolated labs. I wanted an environment where services depend on each other, changes have consequences, and recovery matters as much as deployment.
-
-The lab lets me work with:
-
-- Linux systems, virtual machines and containers;
-- segmented networking, internal DNS and remote access;
-- Git-managed Docker deployments;
-- backups, health checks and rollback procedures;
-- workflow automation across APIs and services;
-- local language models and GPU-constrained AI workloads.
-
-## Architecture at a glance
+## Overview
 
 ```mermaid
-flowchart TB
-    users[Trusted clients and remote access] --> edge[Router and firewall]
-
-    edge --> core[Core services network]
-    edge --> iot[IoT network]
-    edge --> guest[Guest network]
-    edge --> cluster[Cluster communication network]
-
-    core --> dns[Authoritative internal DNS]
-    core --> pve[Proxmox cluster]
-
-    subgraph virtualisation[Virtualisation and recovery]
-        pve --> guests[VMs and LXCs]
-        pve --> backup[Proxmox Backup Server]
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    %% Edge & Network
+    subgraph External ["External & Remote Access"]
+        Internet(("Internet"))
+        WireGuard["WireGuard VPN"]
+        PolandPBS[("Off-site PBS (Poland)")]
     end
 
-    guests --> git[Gitea]
-    guests --> docker[Docker deployment host]
-    guests --> ai[AI compute host]
-    guests --> automation[Hermes and Home Assistant]
-
-    subgraph platform[Container platform]
-        docker --> proxy[Traefik]
-        docker --> deploy[Dockhand]
-        docker --> workflows[n8n]
-        docker --> memory[Honcho]
-        docker --> gateway[MCP gateway]
+    subgraph Network ["Network Edge"]
+        OpenWrt["OpenWrt Firewall / Router"]
+        Switch["TP-Link Managed Switch"]
     end
 
-    subgraph local_ai[Local AI workloads]
-        ai --> models[LM Studio model serving]
-        ai --> media_ml[Immich machine learning]
+    %% Proxmox Cluster Subgraph
+    subgraph Proxmox ["Proxmox VE Cluster"]
+        subgraph Node1 ["Proxmox Node 1"]
+            LocalPBS[("Proxmox Backup Server")]
+            NAS[("ubuvault-alpha NAS")]
+            HomeAssistant["Home Assistant"]
+        end
+
+        subgraph Node2 ["Proxmox Node 2 (endurance)"]
+            AIServer["AI Server (GPU)"]
+        end
+
+        subgraph ClusterServices ["Cluster Services"]
+            Technitium["Technitium DNS"]
+            Gitea["Gitea Local Git"]
+            Tailscale["Tailscale Exit Node"]
+            Hermes["Hermes AI Agent"]
+
+            subgraph DockerHost ["Docker Server"]
+                Traefik["Traefik Proxy Server"]
+                Dockhand["Dockhand Docker Management"]
+                n8n["n8n Automation Platform"]
+                Immich["Immich Photo Library"]
+                MCPHoncho["MCP Stack & Honcho AI Memory"]
+            end
+        end
     end
 
-    workflows --> gateway
-    automation --> workflows
-    memory --> models
+    %% Ingress & Edge Connections
+    Internet --> OpenWrt
+    WireGuard --> OpenWrt
+    OpenWrt --> Switch
+
+    %% Switch feeds compute nodes
+    Switch --> Node1
+    Switch --> Node2
+
+    %% Cluster nodes host shared services
+    Node1 --> ClusterServices
+    Node2 --> ClusterServices
+
+    %% Disaster Recovery
+    LocalPBS ===|"Encrypted VPN Tunnel"| PolandPBS
+
+    %% Styling & Color Coding (Dark Theme)
+    classDef net fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0;
+    classDef compute fill:#2e1a05,stroke:#fb923c,stroke-width:2px,color:#e2e8f0;
+    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    classDef docker fill:#052e1f,stroke:#34d399,stroke-width:2px,color:#e2e8f0;
+    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
+    classDef ext fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#e2e8f0;
+
+    class Internet ext;
+    class OpenWrt,Switch,WireGuard,Technitium,Tailscale net;
+    class Node1,Node2,ClusterServices compute;
+    class LocalPBS,NAS,PolandPBS storage;
+    class DockerHost,Traefik,Dockhand,Immich,Gitea docker;
+    class AIServer,Hermes,HomeAssistant,n8n,MCPHoncho ai;
 ```
 
-The diagram shows roles and trust boundaries rather than operational addresses or hostnames. See [Architecture](docs/architecture.md) for the expanded view.
+The environment is built around:
 
-## Technical highlights
+- a multi-node Proxmox cluster with a separate cluster network;
+- OpenWrt, managed switching, VLAN segmentation, internal DNS and WireGuard;
+- a central Docker host using Gitea, Dockhand and Traefik;
+- local and off-site Proxmox backups;
+- a NAS used by stateful applications such as Immich;
+- a distributed JARVIS stack using Hermes, n8n, MCP, Honcho and local AI.
 
-| Area | What I implemented | Evidence |
-| --- | --- | --- |
-| Virtualisation | Multi-node Proxmox environment with VMs, LXCs and a separate cluster network | [Proxmox platform case study](docs/case-studies/proxmox-platform.md) |
-| Networking | Segmented core, IoT, guest and cluster traffic with internal DNS and VPN access | [Architecture](docs/architecture.md#network-boundaries) |
-| Delivery | Gitea-based configuration workflow, reviewed changes, Dockhand deployment and post-deployment checks | [Git-managed deployment case study](docs/case-studies/gitops-deployment.md) |
-| Recovery | Proxmox backups, explicit rollback thinking and health verification after changes | [Operations and recovery](docs/architecture.md#resilience-and-recovery) |
-| Automation | n8n and Hermes workflows integrating APIs, structured data and home infrastructure | [Automation flow](docs/architecture.md#automation-and-ai-flow) |
-| AI operations | Local model serving, memory services and GPU capacity planning alongside media ML workloads | [Self-hosted AI case study](docs/case-studies/self-hosted-ai.md) |
+## What this demonstrates
 
-## Case studies
+| Area | Evidence |
+| --- | --- |
+| Virtualisation and networking | [Architecture](docs/architecture.md) and [Proxmox case study](docs/case-studies/proxmox-platform.md) |
+| Systems and data ownership | [System catalogue](docs/systems.md) |
+| Deployment, backup and recovery | [Operations](docs/operations.md) and [GitOps case study](docs/case-studies/gitops-deployment.md) |
+| Local AI and agent automation | [Self-hosted AI case study](docs/case-studies/self-hosted-ai.md) |
 
-### [Proxmox platform and segmented networking](docs/case-studies/proxmox-platform.md)
+## Main systems
 
-How I separated infrastructure roles, cluster traffic, services and recovery concerns across a constrained home environment.
+| System | Purpose |
+| --- | --- |
+| Technitium DNS | Internal DNS and custom local service names |
+| Docker deploy | Container platform, CI/CD and reverse proxy |
+| AI server | Local model serving and Immich machine learning |
+| Gitea | Source control, reviews and GitHub mirrors |
+| Hermes | JARVIS runtime and tool orchestration |
+| Home Assistant | Smart-home control and local integrations |
+| ubuvault-alpha | NAS and persistent media storage |
+| Proxmox Backup Server | Local recovery and off-site replication to Poland |
+
+The [system catalogue](docs/systems.md) explains where each system fits without exposing operational access details.
+
+## Featured case studies
+
+### [Proxmox platform](docs/case-studies/proxmox-platform.md)
+
+How I separated compute, cluster communication, services and recovery concerns in a constrained home environment.
 
 ### [Git-managed Docker deployments](docs/case-studies/gitops-deployment.md)
 
-How Gitea, pull requests, Dockhand and runtime health checks provide a safer path from configuration change to running service.
+How configuration moves from a Gitea branch through review, Dockhand deployment and post-deployment verification.
 
-### [Self-hosted AI under resource constraints](docs/case-studies/self-hosted-ai.md)
+### [Self-hosted AI](docs/case-studies/self-hosted-ai.md)
 
-How I separated AI compute, selected lightweight local models and balanced persistent memory workloads against GPU capacity needed by other services.
+How I balance local language models, memory services and Immich ML on limited GPU, memory and storage capacity.
 
-## How I approach infrastructure work
+## Working principles
 
-1. Inspect the live system before changing it.
-2. Record the current state and identify a rollback path.
-3. Keep non-secret configuration in Git.
-4. Separate runtime secrets from version-controlled files.
-5. Change one layer at a time when possible.
-6. Verify the result from the service and client side.
-7. Document failures and the reasoning behind the final design.
+- inspect the live system before changing it;
+- keep non-secret configuration in Git;
+- define a rollback path before consequential changes;
+- verify useful behaviour, not only process status;
+- document failures and trade-offs honestly.
 
-The lab is intentionally imperfect. Its purpose is to make constraints, failures and trade-offs visible enough to learn from them.
+## Security
 
-## Skills demonstrated
+This repository does not contain credentials, private keys, live addresses, complete firewall or VPN configuration, personal data, private automation payloads or exact backup destinations. See [SECURITY.md](SECURITY.md).
 
-- Proxmox VE, KVM and LXC
-- Linux system administration
-- Docker and Docker Compose
-- Git, Gitea and pull-request workflows
-- network segmentation, VLANs, DNS and VPN access
-- Traefik and internal service routing
-- backup and recovery planning
-- n8n workflow automation and API integration
-- local LLM serving and AI workload planning
-- technical documentation and incident analysis
+## Current work
 
-## Repository map
-
-```text
-docs/
-├── architecture.md
-├── engineering-decisions.md
-├── security-and-privacy.md
-└── case-studies/
-    ├── proxmox-platform.md
-    ├── gitops-deployment.md
-    └── self-hosted-ai.md
-
-examples/
-└── README.md
-```
-
-The `examples` directory will contain selected, sanitised configuration fragments. The repository will not mirror the private deployment repositories.
-
-## Security and privacy
-
-This repository deliberately excludes:
-
-- credentials, tokens, private keys and certificate material;
-- real public addresses, MAC addresses and device serial numbers;
-- complete firewall, VPN or remote-access configurations;
-- unredacted environment files and application exports;
-- backup destinations and other details that would meaningfully reduce security.
-
-The full policy and publication checklist are in [Security and privacy](docs/security-and-privacy.md).
-
-## Current status
-
-This is the first documentation draft. The next useful additions are a visual architecture diagram, sanitised configuration examples and verification evidence for each case study.
+The foundational architecture and subsystem diagrams have been integrated. The next additions are verified Proxmox resource allocations, selected sanitised configuration examples and measured recovery evidence.
 
 ## Author
 

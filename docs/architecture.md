@@ -1,146 +1,366 @@
 # Architecture
 
-## Scope
+This page describes the homelab at a portfolio level. It explains the main boundaries and dependencies without reproducing the live address plan or private configuration.
 
-This page describes the logical shape of the homelab. It is not a complete inventory and does not expose operational addresses, credentials or remote-access configuration.
+## Architecture layers
 
-The environment is split into four concerns:
+### Network
 
-1. network boundaries and name resolution;
-2. virtualisation and recovery;
-3. application delivery and automation;
-4. local AI compute.
+OpenWrt provides routing, firewalling and DHCP. A managed switch carries the required VLANs. Technitium provides internal DNS, and WireGuard provides authenticated remote access.
 
-## Network boundaries
+The public model shows four network purposes:
+
+- core infrastructure and trusted clients;
+- IoT devices;
+- guest access;
+- Proxmox cluster communication.
+
+### Compute and storage
+
+Proxmox hosts the main VMs and LXCs. Workloads are separated by responsibility: infrastructure, container applications, AI compute, home automation, JARVIS, NAS storage and backup.
+
+A local Proxmox Backup Server provides the first restore path. A second PBS in Poland stores an off-site copy over the VPN. The final documentation will name the sync direction only after the running job has been checked.
+
+### Applications and automation
+
+The Docker host runs Traefik, Dockhand, n8n, the MCP stack, Honcho and Immich core services. Immich stores its media on the NAS and sends machine-learning work to the AI server.
+
+Hermes is the visible JARVIS runtime. n8n owns durable automation, MCP exposes authorised integrations, Honcho handles conversational memory, and the AI server provides local inference.
+
+## Diagram 1: homelab overview
 
 ```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
 flowchart LR
-    internet[Internet] --> firewall[Router and firewall]
-    vpn[Authenticated VPN clients] --> firewall
+    %% Edge & Network
+    subgraph External ["External & Remote Access"]
+        Internet(("Internet"))
+        WireGuard["WireGuard VPN"]
+        PolandPBS[("Off-site PBS (Poland)")]
+    end
 
-    firewall --> trusted[Trusted and management zone]
-    firewall --> iot[IoT zone]
-    firewall --> guest[Guest zone]
-    firewall --> cluster[Cluster-only zone]
+    subgraph Network ["Network Edge"]
+        OpenWrt["OpenWrt Firewall / Router"]
+        Switch["TP-Link Managed Switch"]
+    end
 
-    trusted --> services[Infrastructure and application services]
-    trusted --> dns[Internal DNS]
-    cluster --> pve[Proxmox cluster communication]
+    %% Proxmox Cluster Subgraph
+    subgraph Proxmox ["Proxmox VE Cluster"]
+        subgraph Node1 ["Proxmox Node 1"]
+            LocalPBS[("Proxmox Backup Server")]
+            NAS[("NAS Server")]
+            HomeAssistant["Home Assistant"]
+        end
 
-    iot -. restricted flows .-> automation[Home automation]
-    guest -. internet access only .-> internet
+        subgraph Node2 ["Proxmox Node 2 (endurance)"]
+            AIServer["AI Server (GPU)"]
+        end
+
+        subgraph ClusterServices ["Cluster Services"]
+            Technitium["Technitium DNS"]
+            Gitea["Gitea Local Git"]
+            Tailscale["Tailscale Exit Node"]
+            Hermes["Hermes AI Agent"]
+
+            subgraph DockerHost ["Docker Server"]
+                Traefik["Traefik Proxy Server"]
+                Dockhand["Dockhand Docker Management"]
+                n8n["n8n Automation Platform"]
+                Immich["Immich Photo Library"]
+                MCPHoncho["MCP Stack & Honcho AI Memory"]
+            end
+        end
+    end
+
+    %% Ingress & Edge Connections
+    Internet --> OpenWrt
+    WireGuard --> OpenWrt
+    OpenWrt --> Switch
+
+    %% Switch feeds compute nodes
+    Switch --> Node1
+    Switch --> Node2
+
+    %% Cluster nodes host shared services
+    Node1 --> ClusterServices
+    Node2 --> ClusterServices
+
+    %% Disaster Recovery
+    LocalPBS ===|"Encrypted VPN Tunnel"| PolandPBS
+
+    %% Styling & Color Coding (Dark Theme)
+    classDef net fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0;
+    classDef compute fill:#2e1a05,stroke:#fb923c,stroke-width:2px,color:#e2e8f0;
+    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    classDef docker fill:#052e1f,stroke:#34d399,stroke-width:2px,color:#e2e8f0;
+    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
+    classDef ext fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#e2e8f0;
+
+    class Internet ext;
+    class OpenWrt,Switch,WireGuard,Technitium,Tailscale net;
+    class Node1,Node2,ClusterServices compute;
+    class LocalPBS,NAS,PolandPBS storage;
+    class DockerHost,Traefik,Dockhand,Immich,Gitea docker;
+    class AIServer,Hermes,HomeAssistant,n8n,MCPHoncho ai;
 ```
 
-### Design intent
-
-- Trusted clients can reach administration interfaces when required.
-- IoT devices are isolated from general client and management traffic.
-- Guest devices do not receive access to internal services.
-- Proxmox cluster communication uses a dedicated segment.
-- Remote administration enters through authenticated VPN access rather than direct service exposure.
-- Internal DNS provides stable service names independently of individual application ports.
-
-The operational firewall rules and address plan remain private. Public examples will use fictional networks and hostnames.
-
-## Compute and service topology
+## Diagram 2: network and trust boundaries
 
 ```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart TD
+    %% Top: Edge & Gateway Layer
+    subgraph Ingress ["Edge & Gateway"]
+        Internet(("Public Internet"))
+        WireGuard["WireGuard VPN (Remote Admin)"]
+        OpenWrt["OpenWrt Firewall / Router"]
+        Switch["TP-Link Managed Switch"]
+
+        Internet -->|"WAN / Drop Inbound"| OpenWrt
+        WireGuard -->|"Authenticated VPN"| OpenWrt
+        OpenWrt <-->|"802.1Q VLAN Trunk"| Switch
+    end
+
+    %% 4 VLAN Boxes Side-by-Side Underneath
+    subgraph ClusterVLAN ["Cluster VLAN"]
+        Corosync["Proxmox Corosync & Migration (No IP Gateway)"]
+    end
+
+    subgraph CoreVLAN ["Core VLAN (Trusted & MGMT)"]
+        TrustedClients["Trusted Clients (Workstations / Mobile)"]
+        ProxmoxMgmt["Proxmox Management (Web UI / SSH)"]
+        HA["Home Assistant (Smart Home Hub)"]
+        CoreServices["Core Infrastructure (Technitium DNS, Docker, NAS)"]
+    end
+
+    subgraph IoTVLAN ["IoT VLAN (Smart Home)"]
+        IoTDevices["Smart Devices, Sensors & Plugs"]
+    end
+
+    subgraph GuestVLAN ["Guest VLAN (Visitors)"]
+        GuestClients["Guest Devices (Isolated)"]
+    end
+
+    %% Switch Downlink Connections
+    Switch <-->|"Dedicated L2 Ports"| ClusterVLAN
+    Switch <-->|"VLAN Trunk (Full Access)"| CoreVLAN
+    Switch <-->|"VLAN Trunk (Internet + Filtered)"| IoTVLAN
+    Switch <-->|"VLAN Trunk (Internet Only)"| GuestVLAN
+
+    %% Inter-VLAN & Node Policies
+    ProxmoxMgmt ===|"Dedicated NICs (Corosync L2)"| Corosync
+    TrustedClients -->|"Admin & Control"| IoTDevices
+    IoTDevices -->|"Telemetry (HA only)"| HA
+    IoTDevices -.->|"Blocked: Dropped by Firewall"| CoreServices
+    GuestClients -.->|"Blocked: Zero Internal Access"| CoreVLAN
+
+    %% Styles for 4 VLAN Boxes
+    style Ingress fill:#0f172a,stroke:#64748b,stroke-width:2px,color:#e2e8f0;
+    style ClusterVLAN fill:#061e33,stroke:#0ea5e9,stroke-width:2px,color:#e2e8f0;
+    style CoreVLAN fill:#042116,stroke:#10b981,stroke-width:2px,color:#e2e8f0;
+    style IoTVLAN fill:#271403,stroke:#f97316,stroke-width:2px,color:#e2e8f0;
+    style GuestVLAN fill:#1d0b2e,stroke:#a855f7,stroke-width:2px,color:#e2e8f0;
+
+    %% Node styling
+    classDef edgeNode fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
+    classDef clusterNode fill:#0c4a6e,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
+    classDef coreNode fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#f8fafc;
+    classDef iotNode fill:#451a03,stroke:#fb923c,stroke-width:1.5px,color:#f8fafc;
+    classDef guestNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
+
+    class Internet,WireGuard,OpenWrt,Switch edgeNode;
+    class Corosync clusterNode;
+    class TrustedClients,ProxmoxMgmt,HA,CoreServices coreNode;
+    class IoTDevices iotNode;
+    class GuestClients guestNode;
+```
+
+Include:
+
+- OpenWrt;
+- managed switch;
+- core, IoT, guest and cluster VLANs;
+- Technitium DNS;
+- WireGuard remote access;
+- permitted and restricted flows.
+
+Use one colour per trust zone. Show the purpose of a boundary rather than the complete firewall rule set.
+
+## Diagram 3: Subsystem interconnections and application flows
+
+These diagrams detail the functional lifecycles and cross-system data flows that operate across the infrastructure.
+
+### 3.1 AI and automation stack (JARVIS platform)
+
+Shows conversational prompt handling, agent orchestration via Hermes, durable automation in n8n, tool integration through the MCP stack, conversational memory in Honcho, local GPU inference, and cloud fallback.
+
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart LR
+    %% Actors
+    User(("User / Voice / Chat")) --> Hermes["Hermes Agent Runtime\n(JARVIS Gateway)"]
+
+    %% Core Orchestration
+    Hermes <-->|"Schedules & Triggers"| n8n["n8n Automation Engine"]
+    Hermes <-->|"Tool Execution"| MCP["MCP Gateway"]
+
+    subgraph MCPTools ["MCP Stack"]
+        DockerMCP["Docker MCP (Container Ops)"]
+        GarminMCP["Garmin MCP (Health / Fitness Data)"]
+    end
+    MCP --> DockerMCP & GarminMCP
+
+    %% Context & Reasoning
+    Hermes <-->|"Session Memory"| Honcho["Honcho Memory System"]
+    Honcho -->|"Local Embeddings & Summaries"| AIServer["AI Server (GPU / LM Studio)"]
+    Hermes -.->|"Complex Reasoning Fallback"| CloudLLM["Cloud LLMs"]
+
+    %% Computer Vision / App ML
+    ImmichApp["Immich Core"] -->|"ML Tasks (CLIP & Face Recognition)"| AIServer
+
+    %% Styling
+    style MCPTools fill:#120e2e,stroke:#818cf8,stroke-width:1.5px,color:#e2e8f0;
+    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef client fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    class Hermes,n8n,MCP,DockerMCP,GarminMCP,Honcho,AIServer,CloudLLM,ImmichApp ai;
+    class User client;
+```
+
+### 3.2 GitOps and container delivery pipeline
+
+Traces the path from code changes and PR reviews in Gitea through automated Dockhand deployment to the Docker host, reverse-proxy ingress via Traefik, and persistent storage mounts.
+
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
 flowchart TB
-    pve[Proxmox VE cluster]
-    pbs[Proxmox Backup Server]
+    %% Ingress & GitOps
+    Dev(("Developer")) -->|"Feature Branch & PR"| Gitea["Gitea Source Control"]
+    Gitea -->|"Approved Compose Stacks"| Dockhand["Dockhand Deployment Engine"]
+    Dockhand -->|"Stack Deploy"| DockerHost["Docker Host Containers"]
+    DockerHost -->|"Post-deployment checks"| Verify["Health & Behaviour Verification"]
 
-    pve --> infra[Infrastructure LXCs and VMs]
-    pve --> app[Application deployment VM]
-    pve --> ai[AI compute VM]
-    pve --> ha[Home automation]
-    pve --> jarvis[Hermes/JARVIS]
-    pve --> pbs
+    %% Ingress Route
+    User(("Web / Mobile Clients")) --> Traefik["Traefik Reverse Proxy"]
+    Traefik -->|"Routes Ingress"| DockerHost
 
-    infra --> dns[Technitium DNS]
-    infra --> git[Gitea]
-    infra --> vpn[VPN services]
+    %% Storage Persistence
+    DockerHost <-->|"Persistent Volumes"| NAS["ubuvault-alpha NAS"]
 
-    app --> traefik[Traefik]
-    app --> dockhand[Dockhand]
-    app --> n8n[n8n]
-    app --> honcho[Honcho]
-    app --> mcp[MCP gateway]
-
-    ai --> lmstudio[LM Studio]
-    ai --> immichml[Immich ML]
-
-    jarvis --> n8n
-    jarvis --> mcp
-    honcho --> lmstudio
+    %% Styling
+    classDef gitops fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef actor fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
+    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    class Gitea,Dockhand,Traefik,DockerHost,Verify gitops;
+    class Dev,User actor;
+    class NAS storage;
 ```
 
-### Placement principles
+### 3.3 Central storage architecture (ubuvault-alpha NAS)
 
-- Core infrastructure services are separated from user-facing application stacks.
-- AI workloads run on a host with access to the available GPU.
-- Deployment configuration is tracked separately from runtime secrets.
-- Backups are not stored only with the workloads they protect.
-- Application routing is centralised while service data remains owned by each application.
-
-## Deployment flow
+Details how the NAS functions as the shared high-capacity storage backbone across virtual machines, containers, and hypervisors.
 
 ```mermaid
-sequenceDiagram
-    participant A as Administrator
-    participant G as Gitea
-    participant R as Pull request
-    participant D as Dockhand
-    participant S as Docker service
-    participant V as Verification
-
-    A->>G: Push change to feature branch
-    G->>R: Open reviewable change
-    R->>G: Merge approved configuration
-    G->>D: Trigger or request deployment
-    D->>S: Pull configuration and update service
-    S->>V: Expose health and runtime state
-    V-->>A: Confirm success or initiate rollback
-```
-
-Not every stack is fully automated. The important property is that a change has an identifiable source revision and an explicit verification step.
-
-## Automation and AI flow
-
-```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
 flowchart LR
-    trigger[User request or schedule] --> hermes[Hermes/JARVIS]
-    hermes --> n8n[n8n orchestration]
-    n8n --> mcp[MCP services]
-    n8n --> data[Structured data stores]
-    mcp --> external[Garmin, Google and other APIs]
-    mcp --> home[Home Assistant]
+    subgraph NASPools ["ubuvault-alpha NAS (Storage Backbone)"]
+        Photos["Immich Media (/photos & /videos)"]
+        GitData["Gitea Repositories Storage"]
+        ISOPool["Proxmox ISOs & VM Templates"]
+        PrivateShares["Private User Shares (SMB / NFS)"]
+    end
 
-    hermes --> router{Model routing}
-    router --> local[Local model serving]
-    router --> cloud[Cloud reasoning provider]
-    local --> memory[Honcho memory tasks]
+    %% Consumers
+    Immich["Immich Container"] <-->|"Direct Media Mount"| Photos
+    Gitea["Gitea LXC"] <-->|"Git Volume Mount"| GitData
+    PVE["Proxmox VE Cluster"] <-->|"NFS Shared Storage"| ISOPool
+    Clients["Workstations & LAN Clients"] <-->|"SMB / NFS Access"| PrivateShares
+
+    %% Styling
+    style NASPools fill:#240c30,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    classDef storageNode fill:#3b0764,stroke:#c084fc,stroke-width:1.5px,color:#f8fafc;
+    classDef clientNode fill:#0f2942,stroke:#38bdf8,stroke-width:1.5px,color:#f8fafc;
+    class Photos,GitData,ISOPool,PrivateShares storageNode;
+    class Immich,Gitea,PVE,Clients clientNode;
 ```
 
-Routine memory and embedding work can remain local. More demanding reasoning can use a cloud provider. This keeps persistent workloads modest while preserving access to stronger models when needed.
+### 3.4 Backup and disaster recovery pipeline
 
-## Resilience and recovery
+Illustrates the tiered recovery strategy: scheduled deduplicated guest backups to the local Proxmox Backup Server, followed by encrypted remote replication over VPN to Poland PBS.
 
-The recovery model uses several layers:
+```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
+flowchart TB
+    subgraph ComputeGuests ["Proxmox Virtual Machines & LXCs"]
+        DockerVM["Docker Deploy Host"]
+        InfraVMs["Core Infrastructure Guests"]
+        AIVM["AI Server"]
+        HAServer["Home Assistant"]
+    end
 
-- Proxmox backups for guests;
-- application-specific persistent data and export procedures;
-- Git history for non-secret deployment configuration;
-- service health checks after updates;
-- rollback to a known-good revision when an update fails;
-- separate documentation for steps that cannot be reconstructed automatically.
+    subgraph LocalBackup ["Local Recovery Tier"]
+        LocalPBS[("Proxmox Backup Server (Local)")]
+        LocalRestore["Fast Local Restore & Deduplication"]
+    end
 
-This is not presented as zero-downtime infrastructure. The goal is predictable recovery with clear ownership of state.
+    subgraph OffsiteBackup ["Off-Site Disaster Recovery"]
+        PolandPBS[("Proxmox Backup Server (Poland)")]
+        RemoteRetention["Geographic Separation (Off-Site)"]
+    end
 
-## Known limitations
+    %% Flows
+    ComputeGuests -->|"Scheduled Deduplicated Backups"| LocalPBS
+    LocalPBS --- LocalRestore
+    LocalPBS ===|"Encrypted VPN Tunnel (Remote Sync)"| PolandPBS
+    PolandPBS --- RemoteRetention
 
-- Some services are configured through web interfaces and are not yet fully reproducible from Git.
-- Hardware capacity and redundancy are limited by a residential budget and power envelope.
-- Monitoring coverage differs between infrastructure layers.
-- Several documentation pages still need measured verification evidence.
+    %% Styling
+    style ComputeGuests fill:#052e1f,stroke:#34d399,stroke-width:1.5px,color:#e2e8f0;
+    style LocalBackup fill:#2b0b1b,stroke:#f43f5e,stroke-width:2px,color:#e2e8f0;
+    style OffsiteBackup fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
+    classDef nodeStyle fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc;
+    class DockerVM,InfraVMs,AIVM,HAServer,LocalPBS,LocalRestore,PolandPBS,RemoteRetention nodeStyle;
+```
 
-These limitations form the roadmap for future improvements rather than being hidden behind a "production-grade" label.
+## Diagram standards
+
+Diagrams are maintained as native, version-controlled Mermaid diagrams directly within the repository markdown pages:
+
+- **Theme:** Dark theme with high-contrast functional color-coding.
+- **Layout Engine:** ELK (`layout: elk`) with linear orthogonal edge routing (`curve: linear`).
+- **Boundaries:** Clear conceptual trust and execution zones with explicit direction of data and authority flow.
