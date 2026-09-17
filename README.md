@@ -148,7 +148,7 @@ This repository does not contain credentials, private keys, live addresses, comp
 
 ## Current work
 
-The next additions are three diagrams created in diagrams.net, verified Proxmox resource allocations, selected sanitised configuration examples and measured recovery evidence.
+The foundational architecture and subsystem diagrams have been integrated. The next additions are verified Proxmox resource allocations, selected sanitised configuration examples and measured recovery evidence.
 
 ## Author
 
