@@ -30,14 +30,84 @@ Hermes is the visible JARVIS runtime. n8n owns durable automation, MCP exposes a
 ## Diagram 1: homelab overview
 
 ```mermaid
+---
+config:
+  theme: dark
+  layout: elk
+  flowchart:
+    curve: linear
+---
 flowchart LR
-    n1(("Internet")) --> n2["OpenWRT Firewall/Router"]
-    n3["tp-link Switch"] --> n4["Proxmox Cluster"] & n5["Proxmox Node 2 endurance"]
-    n2 --> n3 & n16["WireGuard VPN"]
-    n4 --> n6["Proxmox Backup Server"] & n7["Home Assistant"] & n8["NAS Server"] & n10["High Availability Services"]
-    n5 --> n9["AI Server"] & n10
-    n10 --> n11["Docker Server"] & n12["Technitium DNS"] & n13["Tailscale VPN Exit Node"] & n14["Herme AI Agent"] & n15["Gitea Local Git Server"]
-    n11 --> n17["Immich Photo Library"] & n18["Traefik Proxy Sever"] & n19["Dockhand Docker Managment"] & n20["n8n Aumtomation Platform"] & n21["MCP Stack"] & n25["Honcho AI Memroy System"]n11 --> n17["Immich Photo Library"] & n18["Traefik Proxy Sever"] & n19["Dockhand Docker Managment"] & n20["n8n Aumtomation Platform"] & n21["MCP Stack"] & n25["Honcho AI Memroy System"]
+    %% Edge & Network
+    subgraph External ["External & Remote Access"]
+        Internet(("Internet"))
+        WireGuard["WireGuard VPN"]
+        PolandPBS[("Off-site PBS (Poland)")]
+    end
+
+    subgraph Network ["Network Edge"]
+        OpenWrt["OpenWrt Firewall / Router"]
+        Switch["TP-Link Managed Switch"]
+    end
+
+    %% Proxmox Cluster Subgraph
+    subgraph Proxmox ["Proxmox VE Cluster"]
+        subgraph Node1 ["Proxmox Node 1"]
+            LocalPBS[("Proxmox Backup Server")]
+            NAS[("NAS Server")]
+            HomeAssistant["Home Assistant"]
+        end
+
+        subgraph Node2 ["Proxmox Node 2 (endurance)"]
+            AIServer["AI Server (GPU)"]
+        end
+
+        subgraph ClusterServices ["Cluster Services"]
+            Technitium["Technitium DNS"]
+            Gitea["Gitea Local Git"]
+            Tailscale["Tailscale Exit Node"]
+            Hermes["Hermes AI Agent"]
+
+            subgraph DockerHost ["Docker Server"]
+                Traefik["Traefik Proxy Server"]
+                Dockhand["Dockhand Docker Management"]
+                n8n["n8n Automation Platform"]
+                Immich["Immich Photo Library"]
+                MCPHoncho["MCP Stack & Honcho AI Memory"]
+            end
+        end
+    end
+
+    %% Ingress & Edge Connections
+    Internet --> OpenWrt
+    WireGuard --> OpenWrt
+    OpenWrt --> Switch
+
+    %% Switch feeds compute nodes
+    Switch --> Node1
+    Switch --> Node2
+
+    %% Cluster nodes host shared services
+    Node1 --> ClusterServices
+    Node2 --> ClusterServices
+
+    %% Disaster Recovery
+    LocalPBS ===|"Encrypted VPN Tunnel"| PolandPBS
+
+    %% Styling & Color Coding (Dark Theme)
+    classDef net fill:#0f2942,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0;
+    classDef compute fill:#2e1a05,stroke:#fb923c,stroke-width:2px,color:#e2e8f0;
+    classDef storage fill:#260d36,stroke:#c084fc,stroke-width:2px,color:#e2e8f0;
+    classDef docker fill:#052e1f,stroke:#34d399,stroke-width:2px,color:#e2e8f0;
+    classDef ai fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e2e8f0;
+    classDef ext fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#e2e8f0;
+
+    class Internet ext;
+    class OpenWrt,Switch,WireGuard,Technitium,Tailscale net;
+    class Node1,Node2,ClusterServices compute;
+    class LocalPBS,NAS,PolandPBS storage;
+    class DockerHost,Traefik,Dockhand,Immich,Gitea docker;
+    class AIServer,Hermes,HomeAssistant,n8n,MCPHoncho ai;
 ```
 
 ## Diagram 2: network and trust boundaries
